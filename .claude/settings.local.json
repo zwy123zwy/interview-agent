@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(npm cache:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(git diff:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(git stash:*)"
+    ]
+  }
+}

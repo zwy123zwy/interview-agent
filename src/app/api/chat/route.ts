@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     message: body.message.trim(),
   };
 
-  const prepared = prepareChatTurn(requestData);
+  const prepared = await prepareChatTurn(requestData);
   const config = getLlmConfig();
   const encoder = new TextEncoder();
 
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
         }
       }
 
-      finalizeAssistantTurn(prepared.conversationId, prepared.replyId, fullContent.trim());
+      await finalizeAssistantTurn(prepared.conversationId, prepared.replyId, fullContent.trim());
 
       controller.enqueue(
         encoder.encode(

@@ -10,7 +10,7 @@ type RouteContext = {
 
 export async function GET(_: Request, context: RouteContext) {
   const { conversationId } = await context.params;
-  const conversation = getConversation(conversationId);
+  const conversation = await getConversation(conversationId);
 
   if (!conversation) {
     return NextResponse.json(

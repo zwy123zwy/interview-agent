@@ -33,12 +33,12 @@ function buildAssistantReply(message: string, contextSummary: string[]): string 
   return lines.join("\n");
 }
 
-export function prepareChatTurn(request: ChatRequest) {
+export async function prepareChatTurn(request: ChatRequest) {
   const conversationId = request.conversationId ?? createId("conv");
-  const existing = getConversation(conversationId);
+  const existing = await getConversation(conversationId);
 
   if (!existing) {
-    saveConversation({
+    await saveConversation({
       conversationId,
       messages: [],
       updatedAt: new Date().toISOString(),
@@ -46,7 +46,7 @@ export function prepareChatTurn(request: ChatRequest) {
   }
 
   const userMessage = createMessage("user", request.message);
-  const conversation = appendConversationMessage(conversationId, userMessage);
+  const conversation = await appendConversationMessage(conversationId, userMessage);
   const toolDecisions = decideTools(request.message);
   const skillDecisions = decideSkills(request.message);
   const contextHints = buildContextHints(request.message);
@@ -63,7 +63,7 @@ export function prepareChatTurn(request: ChatRequest) {
   };
 }
 
-export function finalizeAssistantTurn(conversationId: string, replyId: string, content: string) {
+export async function finalizeAssistantTurn(conversationId: string, replyId: string, content: string) {
   const assistantMessage: ChatMessage = {
     id: replyId,
     role: "assistant",
@@ -71,7 +71,7 @@ export function finalizeAssistantTurn(conversationId: string, replyId: string, c
     createdAt: new Date().toISOString(),
   };
 
-  appendConversationMessage(conversationId, assistantMessage);
+  await appendConversationMessage(conversationId, assistantMessage);
   return assistantMessage;
 }
 
