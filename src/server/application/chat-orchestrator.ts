@@ -70,3 +70,19 @@ export function handleChat(request: ChatRequest): ChatResponse {
     contextHints,
   };
 }
+
+export function buildChatFallbackReply(request: ChatRequest) {
+  const toolDecisions = decideTools(request.message);
+  const skillDecisions = decideSkills(request.message);
+  const contextHints = buildContextHints(request.message);
+
+  return {
+    toolDecisions,
+    skillDecisions,
+    contextHints,
+    content: buildAssistantReply(
+      request.message,
+      contextHints.map((hint) => `${hint.label}: ${hint.content}`),
+    ),
+  };
+}

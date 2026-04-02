@@ -1,5 +1,11 @@
-import { handleChat } from "@/server/application/chat-orchestrator";
+import {
+  buildChatFallbackReply,
+  handleChat,
+} from "@/server/application/chat-orchestrator";
 import type { ChatRequest } from "@/server/domain/chat";
+import { getLlmConfig } from "@/server/infrastructure/config/env";
+import { createId } from "@/server/infrastructure/ids";
+import { streamChatCompletion } from "@/server/infrastructure/llm/provider";
 
 function toLine(payload: Record<string, unknown>) {
   return `${JSON.stringify(payload)}\n`;
@@ -31,15 +37,20 @@ export async function POST(request: Request) {
     );
   }
 
-  const response = handleChat({
+  const requestData = {
     conversationId: body.conversationId,
     message: body.message.trim(),
-  });
+  };
+
+  const response = handleChat(requestData);
+  const config = getLlmConfig();
 
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const fallback = buildChatFallbackReply(requestData);
+
       controller.enqueue(
         encoder.encode(
           toLine({
@@ -49,26 +60,50 @@ export async function POST(request: Request) {
             toolDecisions: response.toolDecisions,
             skillDecisions: response.skillDecisions,
             contextHints: response.contextHints,
+            llm: {
+              provider: config.provider,
+              model: config.tasks.chat.model,
+            },
           }),
         ),
       );
 
-      for (const chunk of splitForStreaming(response.reply.content)) {
-        controller.enqueue(
-          encoder.encode(
-            toLine({
-              type: "chunk",
-              content: `${chunk}${chunk.endsWith("\n") ? "" : "\n"}`,
-            }),
-          ),
-        );
-        await new Promise((resolve) => setTimeout(resolve, 40));
+      let streamed = false;
+
+      try {
+        for await (const chunk of streamChatCompletion(
+          requestData.message,
+          fallback.contextHints.map((hint) => `${hint.label}: ${hint.content}`),
+        )) {
+          streamed = true;
+          controller.enqueue(
+            encoder.encode(
+              toLine({
+                type: "chunk",
+                content: chunk.content,
+              }),
+            ),
+          );
+        }
+      } catch {
+        for (const chunk of splitForStreaming(fallback.content)) {
+          controller.enqueue(
+            encoder.encode(
+              toLine({
+                type: "chunk",
+                content: `${chunk}${chunk.endsWith("\n") ? "" : "\n"}`,
+              }),
+            ),
+          );
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
       }
 
       controller.enqueue(
         encoder.encode(
           toLine({
             type: "done",
+            streamed,
           }),
         ),
       );

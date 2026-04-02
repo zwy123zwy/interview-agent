@@ -39,7 +39,9 @@
 - 后端已能返回 tool decisions、skill decisions、context hints
 - 当前实现已改为流式返回，前端会边接收边渲染回复
 - 页面已改为单列对话布局，消息左右对齐，气泡宽度更稳定
-- 当前实现为占位编排器，后续可接真实插件、skills、LLM 和持久化
+- 当前已补统一 LLM provider 抽象，默认优先本地 Ollama
+- 当本地 Ollama 或其他已配置 provider 可用时，`/api/chat` 会优先走真实流式
+- 若 provider 不可用，则自动回退到占位编排回复
 
 ## 下一步计划
 
