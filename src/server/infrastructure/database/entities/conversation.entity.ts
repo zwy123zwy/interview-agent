@@ -1,18 +1,24 @@
 import {
   Entity,
   PrimaryColumn,
-  Column,
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
-  type Relation,
+  ManyToOne,
+  JoinColumn,
 } from "typeorm";
-import { MessageEntity } from "./message.entity";
+import type { Relation } from "typeorm";
+
+import { UserEntity } from "./user.entity";
 
 @Entity("conversations")
 export class ConversationEntity {
   @PrimaryColumn({ type: "varchar", length: 64 })
   conversationId!: string;
+
+  @ManyToOne(() => UserEntity, { nullable: true, onDelete: "CASCADE" })
+  @JoinColumn({ name: "userId", referencedColumnName: "userId" })
+  user!: Relation<UserEntity | null>;
 
   @CreateDateColumn({ type: "timestamp" })
   createdAt!: Date;
@@ -20,8 +26,8 @@ export class ConversationEntity {
   @UpdateDateColumn({ type: "timestamp" })
   updatedAt!: Date;
 
-  @OneToMany(() => MessageEntity, (message) => message.conversation, {
+  @OneToMany("MessageEntity", "conversation", {
     cascade: true,
   })
-  messages!: Relation<MessageEntity[]>;
+  messages!: Relation<unknown[]>;
 }

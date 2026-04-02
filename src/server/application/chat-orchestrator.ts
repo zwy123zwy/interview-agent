@@ -2,7 +2,7 @@ import type { ChatMessage, ChatRequest } from "@/server/domain/chat";
 import { createId } from "@/server/infrastructure/ids";
 import {
   appendConversationMessage,
-  getConversation,
+  getConversationForUser,
   saveConversation,
 } from "@/server/infrastructure/store/conversation-store";
 import { buildContextHints } from "@/server/application/chat-context-service";
@@ -35,10 +35,10 @@ function buildAssistantReply(message: string, contextSummary: string[]): string 
 
 export async function prepareChatTurn(request: ChatRequest) {
   const conversationId = request.conversationId ?? createId("conv");
-  const existing = await getConversation(conversationId);
+  const existing = await getConversationForUser(request.userId, conversationId);
 
   if (!existing) {
-    await saveConversation({
+    await saveConversation(request.userId, {
       conversationId,
       messages: [],
       updatedAt: new Date().toISOString(),

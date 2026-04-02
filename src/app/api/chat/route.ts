@@ -6,6 +6,8 @@ import {
 import type { ChatRequest } from "@/server/domain/chat";
 import { getLlmConfig } from "@/server/infrastructure/config/env";
 import { streamChatCompletion } from "@/server/infrastructure/llm/provider";
+import { getSessionUserId } from "@/server/infrastructure/auth/session-reader";
+import { NextResponse } from "next/server";
 
 function toLine(payload: Record<string, unknown>) {
   return `${JSON.stringify(payload)}\n`;
@@ -19,25 +21,26 @@ function splitForStreaming(content: string) {
 }
 
 export async function POST(request: Request) {
+  const userId = await getSessionUserId();
+
+  if (!userId) {
+    return NextResponse.json(
+      { error_code: "UNAUTHORIZED", message: "Not authenticated", retryable: false },
+      { status: 401 },
+    );
+  }
+
   const body = (await request.json()) as Partial<ChatRequest>;
 
   if (!body.message || !body.message.trim()) {
-    return new Response(
-      JSON.stringify({
-        error_code: "INVALID_CHAT_MESSAGE",
-        message: "message is required",
-        retryable: false,
-      }),
-      {
-        status: 400,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-        },
-      },
+    return NextResponse.json(
+      { error_code: "INVALID_CHAT_MESSAGE", message: "message is required", retryable: false },
+      { status: 400 },
     );
   }
 
   const requestData = {
+    userId,
     conversationId: body.conversationId,
     message: body.message.trim(),
   };

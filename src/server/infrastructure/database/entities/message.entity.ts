@@ -5,9 +5,8 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
-  type Relation,
 } from "typeorm";
-import { ConversationEntity } from "./conversation.entity";
+import type { Relation } from "typeorm";
 
 @Entity("messages")
 export class MessageEntity {
@@ -26,9 +25,9 @@ export class MessageEntity {
   @Column({ type: "varchar", length: 64 })
   conversationId!: string;
 
-  @ManyToOne(() => ConversationEntity, (conversation) => conversation.messages, {
+  @ManyToOne("ConversationEntity", "messages", {
     onDelete: "CASCADE",
   })
   @JoinColumn({ name: "conversationId" })
-  conversation!: Relation<ConversationEntity>;
+  conversation!: Relation<unknown>;
 }

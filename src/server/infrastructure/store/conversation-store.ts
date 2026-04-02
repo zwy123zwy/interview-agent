@@ -2,6 +2,22 @@ import type { ChatConversation, ChatMessage } from "@/server/domain/chat";
 import { getDataSource } from "@/server/infrastructure/database/data-source";
 import { ConversationEntity } from "@/server/infrastructure/database/entities/conversation.entity";
 import { MessageEntity } from "@/server/infrastructure/database/entities/message.entity";
+import { UserEntity } from "@/server/infrastructure/database/entities/user.entity";
+
+function mapConversationEntity(entity: ConversationEntity): ChatConversation {
+  return {
+    conversationId: entity.conversationId,
+    messages: (entity.messages as MessageEntity[])
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((msg) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        createdAt: msg.createdAt.toISOString(),
+      })),
+    updatedAt: entity.updatedAt.toISOString(),
+  };
+}
 
 export async function getConversation(
   conversationId: string,
@@ -14,48 +30,41 @@ export async function getConversation(
     relations: ["messages"],
   });
 
-  if (!entity) {
-    return null;
-  }
-
-  return {
-    conversationId: entity.conversationId,
-    messages: entity.messages
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((msg) => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        createdAt: msg.createdAt.toISOString(),
-      })),
-    updatedAt: entity.updatedAt.toISOString(),
-  };
+  if (!entity) return null;
+  return mapConversationEntity(entity);
 }
 
-export async function listConversations(): Promise<ChatConversation[]> {
+export async function getConversationForUser(
+  userId: string,
+  conversationId: string,
+): Promise<ChatConversation | null> {
+  const dataSource = await getDataSource();
+  const conversationRepo = dataSource.getRepository(ConversationEntity);
+
+  const entity = await conversationRepo.findOne({
+    where: { conversationId, user: { userId } },
+    relations: ["messages", "user"],
+  });
+
+  if (!entity) return null;
+  return mapConversationEntity(entity);
+}
+
+export async function listConversations(userId: string): Promise<ChatConversation[]> {
   const dataSource = await getDataSource();
   const conversationRepo = dataSource.getRepository(ConversationEntity);
 
   const entities = await conversationRepo.find({
+    where: { user: { userId } },
     relations: ["messages"],
     order: { updatedAt: "DESC" },
   });
 
-  return entities.map((entity) => ({
-    conversationId: entity.conversationId,
-    messages: entity.messages
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((msg) => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        createdAt: msg.createdAt.toISOString(),
-      })),
-    updatedAt: entity.updatedAt.toISOString(),
-  }));
+  return entities.map(mapConversationEntity);
 }
 
 export async function saveConversation(
+  userId: string,
   conversation: ChatConversation,
 ): Promise<ChatConversation> {
   const dataSource = await getDataSource();
@@ -63,6 +72,7 @@ export async function saveConversation(
 
   const entity = conversationRepo.create({
     conversationId: conversation.conversationId,
+    user: { userId } as UserEntity,
     messages: conversation.messages.map((msg) =>
       dataSource.getRepository(MessageEntity).create({
         id: msg.id,
@@ -102,3 +112,4 @@ export async function appendConversationMessage(
 
   return updated;
 }
+

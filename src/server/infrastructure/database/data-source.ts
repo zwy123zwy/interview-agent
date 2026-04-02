@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { DataSource } from "typeorm";
 import { ConversationEntity } from "./entities/conversation.entity";
 import { MessageEntity } from "./entities/message.entity";
+import { UserEntity } from "./entities/user.entity";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -14,7 +15,7 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_DATABASE || "interview_product",
   synchronize: !isProduction,
   logging: !isProduction,
-  entities: [ConversationEntity, MessageEntity],
+  entities: [ConversationEntity, MessageEntity, UserEntity],
   migrations: [],
   subscribers: [],
   charset: "utf8mb4",
