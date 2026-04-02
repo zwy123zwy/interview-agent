@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatRequest, ChatResponse } from "@/server/domain/chat";
+import type { ChatMessage, ChatRequest } from "@/server/domain/chat";
 import { createId } from "@/server/infrastructure/ids";
 import {
   appendConversationMessage,
@@ -33,7 +33,7 @@ function buildAssistantReply(message: string, contextSummary: string[]): string 
   return lines.join("\n");
 }
 
-export function handleChat(request: ChatRequest): ChatResponse {
+export function prepareChatTurn(request: ChatRequest) {
   const conversationId = request.conversationId ?? createId("conv");
   const existing = getConversation(conversationId);
 
@@ -46,29 +46,33 @@ export function handleChat(request: ChatRequest): ChatResponse {
   }
 
   const userMessage = createMessage("user", request.message);
-  appendConversationMessage(conversationId, userMessage);
-
+  const conversation = appendConversationMessage(conversationId, userMessage);
   const toolDecisions = decideTools(request.message);
   const skillDecisions = decideSkills(request.message);
   const contextHints = buildContextHints(request.message);
-
-  const assistantMessage = createMessage(
-    "assistant",
-    buildAssistantReply(
-      request.message,
-      contextHints.map((hint) => `${hint.label}: ${hint.content}`),
-    ),
-  );
-
-  appendConversationMessage(conversationId, assistantMessage);
+  const replyId = createId("msg");
 
   return {
     conversationId,
-    reply: assistantMessage,
+    replyId,
+    userMessage,
+    conversation,
     toolDecisions,
     skillDecisions,
     contextHints,
   };
+}
+
+export function finalizeAssistantTurn(conversationId: string, replyId: string, content: string) {
+  const assistantMessage: ChatMessage = {
+    id: replyId,
+    role: "assistant",
+    content,
+    createdAt: new Date().toISOString(),
+  };
+
+  appendConversationMessage(conversationId, assistantMessage);
+  return assistantMessage;
 }
 
 export function buildChatFallbackReply(request: ChatRequest) {

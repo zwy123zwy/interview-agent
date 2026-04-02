@@ -1,3 +1,4 @@
+import type { ChatMessage } from "@/server/domain/chat";
 import { getLlmConfig } from "@/server/infrastructure/config/env";
 
 export interface LlmStreamChunk {
@@ -5,7 +6,7 @@ export interface LlmStreamChunk {
 }
 
 export async function* streamChatCompletion(
-  message: string,
+  history: Array<Pick<ChatMessage, "role" | "content">>,
   contextHints: string[],
 ): AsyncGenerator<LlmStreamChunk> {
   const config = getLlmConfig();
@@ -15,33 +16,33 @@ export async function* streamChatCompletion(
   }
 
   if (config.provider === "ollama") {
-    yield* streamFromOllama(message, contextHints);
+    yield* streamFromOllama(history, contextHints);
     return;
   }
 
   if (config.provider === "openai") {
-    yield* streamFromOpenAICompatible(message, contextHints);
+    yield* streamFromOpenAICompatible(history, contextHints);
     return;
   }
 }
 
 async function* streamFromOllama(
-  message: string,
+  history: Array<Pick<ChatMessage, "role" | "content">>,
   contextHints: string[],
 ): AsyncGenerator<LlmStreamChunk> {
   const config = getLlmConfig();
-  const response = await fetch(`${config.baseUrl}/api/generate`, {
+  const response = await fetch(`${config.baseUrl}/api/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: config.tasks.chat.model,
-      prompt: buildPrompt(message, contextHints),
       stream: true,
       options: {
         temperature: config.tasks.chat.temperature,
       },
+      messages: toProviderMessages(history, contextHints),
     }),
   });
 
@@ -63,13 +64,17 @@ async function* streamFromOllama(
 
     for (const line of lines) {
       if (!line.trim()) continue;
+
       const payload = JSON.parse(line) as {
-        response?: string;
+        message?: {
+          content?: string;
+        };
         done?: boolean;
       };
 
-      if (payload.response) {
-        yield { content: payload.response };
+      const content = payload.message?.content;
+      if (content) {
+        yield { content };
       }
 
       if (payload.done) {
@@ -80,7 +85,7 @@ async function* streamFromOllama(
 }
 
 async function* streamFromOpenAICompatible(
-  message: string,
+  history: Array<Pick<ChatMessage, "role" | "content">>,
   contextHints: string[],
 ): AsyncGenerator<LlmStreamChunk> {
   const config = getLlmConfig();
@@ -94,17 +99,7 @@ async function* streamFromOpenAICompatible(
       model: config.tasks.chat.model,
       temperature: config.tasks.chat.temperature,
       stream: true,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are the chat orchestrator for an interview product. Use the provided context and answer concisely.",
-        },
-        {
-          role: "user",
-          content: buildPrompt(message, contextHints),
-        },
-      ],
+      messages: toProviderMessages(history, contextHints),
     }),
   });
 
@@ -147,9 +142,31 @@ async function* streamFromOpenAICompatible(
   }
 }
 
-function buildPrompt(message: string, contextHints: string[]) {
+function toProviderMessages(
+  history: Array<Pick<ChatMessage, "role" | "content">>,
+  contextHints: string[],
+) {
+  return [
+    {
+      role: "system",
+      content: buildSystemPrompt(contextHints),
+    },
+    ...history.map((message) => ({
+      role: message.role,
+      content: message.content,
+    })),
+  ];
+}
+
+function buildSystemPrompt(contextHints: string[]) {
   const contextBlock =
     contextHints.length > 0 ? contextHints.map((item) => `- ${item}`).join("\n") : "- 无";
 
-  return `用户请求：${message}\n\n补充上下文：\n${contextBlock}\n\n请结合上下文给出下一步建议，并说明是否需要调用工具或技能。`;
+  return [
+    "你是程序员面试产品的聊天编排助手。",
+    "优先根据用户当前请求判断下一步是否需要：上下文补充、工具调用、技能选择。",
+    "回答要简洁明确，不要编造未提供的信息。",
+    "当前补充上下文：",
+    contextBlock,
+  ].join("\n");
 }

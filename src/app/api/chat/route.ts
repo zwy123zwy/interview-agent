@@ -1,10 +1,10 @@
 import {
   buildChatFallbackReply,
-  handleChat,
+  finalizeAssistantTurn,
+  prepareChatTurn,
 } from "@/server/application/chat-orchestrator";
 import type { ChatRequest } from "@/server/domain/chat";
 import { getLlmConfig } from "@/server/infrastructure/config/env";
-import { createId } from "@/server/infrastructure/ids";
 import { streamChatCompletion } from "@/server/infrastructure/llm/provider";
 
 function toLine(payload: Record<string, unknown>) {
@@ -42,9 +42,8 @@ export async function POST(request: Request) {
     message: body.message.trim(),
   };
 
-  const response = handleChat(requestData);
+  const prepared = prepareChatTurn(requestData);
   const config = getLlmConfig();
-
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -55,11 +54,11 @@ export async function POST(request: Request) {
         encoder.encode(
           toLine({
             type: "meta",
-            conversationId: response.conversationId,
-            replyId: response.reply.id,
-            toolDecisions: response.toolDecisions,
-            skillDecisions: response.skillDecisions,
-            contextHints: response.contextHints,
+            conversationId: prepared.conversationId,
+            replyId: prepared.replyId,
+            toolDecisions: prepared.toolDecisions,
+            skillDecisions: prepared.skillDecisions,
+            contextHints: prepared.contextHints,
             llm: {
               provider: config.provider,
               model: config.tasks.chat.model,
@@ -69,13 +68,15 @@ export async function POST(request: Request) {
       );
 
       let streamed = false;
+      let fullContent = "";
 
       try {
         for await (const chunk of streamChatCompletion(
-          requestData.message,
+          prepared.conversation.messages,
           fallback.contextHints.map((hint) => `${hint.label}: ${hint.content}`),
         )) {
           streamed = true;
+          fullContent += chunk.content;
           controller.enqueue(
             encoder.encode(
               toLine({
@@ -87,17 +88,21 @@ export async function POST(request: Request) {
         }
       } catch {
         for (const chunk of splitForStreaming(fallback.content)) {
+          const content = `${chunk}${chunk.endsWith("\n") ? "" : "\n"}`;
+          fullContent += content;
           controller.enqueue(
             encoder.encode(
               toLine({
                 type: "chunk",
-                content: `${chunk}${chunk.endsWith("\n") ? "" : "\n"}`,
+                content,
               }),
             ),
           );
           await new Promise((resolve) => setTimeout(resolve, 40));
         }
       }
+
+      finalizeAssistantTurn(prepared.conversationId, prepared.replyId, fullContent.trim());
 
       controller.enqueue(
         encoder.encode(

@@ -42,6 +42,8 @@
 - 当前已补统一 LLM provider 抽象，默认优先本地 Ollama
 - 当本地 Ollama 或其他已配置 provider 可用时，`/api/chat` 会优先走真实流式
 - 若 provider 不可用，则自动回退到占位编排回复
+- 当前已将对话历史一并传给 provider，不再只传当前一条消息
+- 前端已显示当前 provider / model 与真实流式或回退流式状态
 
 ## 下一步计划
 

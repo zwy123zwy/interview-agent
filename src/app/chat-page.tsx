@@ -20,6 +20,11 @@ type ContextHint = {
   content: string;
 };
 
+type LlmInfo = {
+  provider: string;
+  model: string;
+};
+
 type StreamMetaEvent = {
   type: "meta";
   conversationId: string;
@@ -27,6 +32,7 @@ type StreamMetaEvent = {
   toolDecisions: DecisionItem[];
   skillDecisions: DecisionItem[];
   contextHints: ContextHint[];
+  llm: LlmInfo;
 };
 
 type StreamChunkEvent = {
@@ -36,6 +42,7 @@ type StreamChunkEvent = {
 
 type StreamDoneEvent = {
   type: "done";
+  streamed?: boolean;
 };
 
 type StreamEvent = StreamMetaEvent | StreamChunkEvent | StreamDoneEvent;
@@ -68,6 +75,11 @@ export function ChatPage() {
   const [toolDecisions, setToolDecisions] = useState<DecisionItem[]>([]);
   const [skillDecisions, setSkillDecisions] = useState<DecisionItem[]>([]);
   const [contextHints, setContextHints] = useState<ContextHint[]>([]);
+  const [llmInfo, setLlmInfo] = useState<LlmInfo>({
+    provider: "ollama",
+    model: "qwen2.5:7b",
+  });
+  const [streamMode, setStreamMode] = useState<"streaming" | "fallback">("streaming");
   const [loading, setLoading] = useState(false);
 
   async function sendMessage(message: string) {
@@ -124,6 +136,7 @@ export function ChatPage() {
             setToolDecisions(event.toolDecisions);
             setSkillDecisions(event.skillDecisions);
             setContextHints(event.contextHints);
+            setLlmInfo(event.llm);
             setMessages((current) => [
               ...current,
               {
@@ -145,6 +158,10 @@ export function ChatPage() {
                   : item,
               ),
             );
+          }
+
+          if (event.type === "done") {
+            setStreamMode(event.streamed ? "streaming" : "fallback");
           }
         }
       }
@@ -175,8 +192,13 @@ export function ChatPage() {
                 Interview Agent Console
               </h1>
             </div>
-            <div className="rounded-full bg-slate-950 px-4 py-2 text-sm text-white">
-              {conversationId ?? "新对话"}
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <div className="rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-700">
+                {llmInfo.provider} / {llmInfo.model}
+              </div>
+              <div className="rounded-full bg-slate-950 px-4 py-2 text-white">
+                {conversationId ?? "新对话"}
+              </div>
             </div>
           </div>
 
@@ -220,7 +242,7 @@ export function ChatPage() {
             />
             <div className="mt-3 flex items-center justify-between gap-3">
               <p className="text-xs text-slate-500">
-                当前模式：流式回复 + 意图判断 + 上下文补充 + tool/skill 选择
+                当前模式：{streamMode === "streaming" ? "真实流式回复" : "回退流式回复"} + 意图判断
               </p>
               <button
                 type="button"
@@ -273,9 +295,7 @@ export function ChatPage() {
             <p className="text-sm text-slate-500">Skill Decisions</p>
             <div className="mt-4 space-y-3">
               {skillDecisions.length === 0 ? (
-                <p className="text-sm leading-7 text-slate-600">
-                  当前还没有技能选择结果。
-                </p>
+                <p className="text-sm leading-7 text-slate-600">当前还没有技能选择结果。</p>
               ) : (
                 skillDecisions.map((item) => (
                   <div
@@ -305,9 +325,7 @@ export function ChatPage() {
             <p className="text-sm text-slate-400">Context Hints</p>
             <div className="mt-4 space-y-3">
               {contextHints.length === 0 ? (
-                <p className="text-sm leading-7 text-slate-300">
-                  当前还没有补充上下文。
-                </p>
+                <p className="text-sm leading-7 text-slate-300">当前还没有补充上下文。</p>
               ) : (
                 contextHints.map((hint) => (
                   <div
