@@ -6,6 +6,12 @@ export function getConversation(conversationId: string) {
   return conversationStore.get(conversationId) ?? null;
 }
 
+export function listConversations() {
+  return [...conversationStore.values()].sort((a, b) =>
+    a.updatedAt < b.updatedAt ? 1 : -1,
+  );
+}
+
 export function saveConversation(conversation: ChatConversation) {
   conversationStore.set(conversation.conversationId, conversation);
   return conversation;

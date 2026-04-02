@@ -25,6 +25,13 @@ type LlmInfo = {
   model: string;
 };
 
+type ConversationListItem = {
+  conversationId: string;
+  updatedAt: string;
+  preview: string;
+  messageCount: number;
+};
+
 type StreamMetaEvent = {
   type: "meta";
   conversationId: string;
@@ -61,6 +68,18 @@ function bubbleClass(role: ViewMessage["role"]) {
   return "self-start border border-slate-200 bg-white text-slate-800 text-left";
 }
 
+function toViewMessages(
+  messages: Array<{ id: string; role: string; content: string }>,
+): ViewMessage[] {
+  return messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      id: message.id,
+      role: message.role as ViewMessage["role"],
+      content: message.content,
+    }));
+}
+
 export function ChatPage() {
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [input, setInput] = useState("");
@@ -80,7 +99,35 @@ export function ChatPage() {
     model: "qwen2.5:7b",
   });
   const [streamMode, setStreamMode] = useState<"streaming" | "fallback">("streaming");
+  const [historyItems, setHistoryItems] = useState<ConversationListItem[]>([]);
   const [loading, setLoading] = useState(false);
+
+  async function refreshHistory() {
+    try {
+      const response = await fetch("/api/chat/conversations");
+      if (!response.ok) return;
+
+      const data = (await response.json()) as {
+        items: ConversationListItem[];
+      };
+      setHistoryItems(data.items);
+    } catch {}
+  }
+
+  async function loadConversation(targetConversationId: string) {
+    try {
+      const response = await fetch(`/api/chat/${targetConversationId}`);
+      if (!response.ok) return;
+
+      const data = (await response.json()) as {
+        conversationId: string;
+        messages: Array<{ id: string; role: string; content: string }>;
+      };
+
+      setConversationId(data.conversationId);
+      setMessages(toViewMessages(data.messages));
+    } catch {}
+  }
 
   async function sendMessage(message: string) {
     const trimmed = message.trim();
@@ -165,6 +212,8 @@ export function ChatPage() {
           }
         }
       }
+
+      await refreshHistory();
     } catch {
       setMessages((current) => [
         ...current,
@@ -215,22 +264,67 @@ export function ChatPage() {
                 {prompt}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => {
+                void refreshHistory();
+              }}
+              className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
+            >
+              刷新历史
+            </button>
           </div>
 
-          <div className="mt-5 flex flex-1 flex-col gap-4 overflow-y-auto rounded-[26px] bg-[#fbfaf7] p-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`w-fit max-w-[min(46rem,92%)] rounded-[24px] px-4 py-3 text-sm leading-7 md:text-base [hyphens:none] [overflow-wrap:normal] [word-break:keep-all] ${bubbleClass(
-                  message.role,
-                )}`}
-              >
-                <p className="mb-1 text-xs uppercase tracking-[0.22em] opacity-60">
-                  {message.role}
-                </p>
-                <p className="whitespace-pre-wrap break-keep">{message.content || "..."}</p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_18rem]">
+            <div className="flex min-h-[28rem] flex-col gap-4 overflow-y-auto rounded-[26px] bg-[#fbfaf7] p-4">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`w-fit max-w-[min(46rem,92%)] rounded-[24px] px-4 py-3 text-sm leading-7 md:text-base [hyphens:none] [overflow-wrap:normal] [word-break:keep-all] ${bubbleClass(
+                    message.role,
+                  )}`}
+                >
+                  <p className="mb-1 text-xs uppercase tracking-[0.22em] opacity-60">
+                    {message.role}
+                  </p>
+                  <p className="whitespace-pre-wrap break-keep">
+                    {message.content || "..."}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <aside className="rounded-[26px] border border-slate-200 bg-white p-4">
+              <p className="text-sm font-medium text-slate-900">历史会话</p>
+              <div className="mt-4 space-y-3">
+                {historyItems.length === 0 ? (
+                  <p className="text-sm leading-7 text-slate-500">
+                    当前还没有可读取的历史会话。
+                  </p>
+                ) : (
+                  historyItems.map((item) => (
+                    <button
+                      key={item.conversationId}
+                      type="button"
+                      onClick={() => {
+                        void loadConversation(item.conversationId);
+                      }}
+                      className="block w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:bg-slate-100"
+                    >
+                      <p className="truncate text-sm font-medium text-slate-900">
+                        {item.conversationId}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-6 text-slate-600">
+                        {item.preview || "无预览"}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-400">
+                        {item.messageCount} 条消息
+                      </p>
+                    </button>
+                  ))
+                )}
               </div>
-            ))}
+            </aside>
           </div>
 
           <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-3">
@@ -242,7 +336,8 @@ export function ChatPage() {
             />
             <div className="mt-3 flex items-center justify-between gap-3">
               <p className="text-xs text-slate-500">
-                当前模式：{streamMode === "streaming" ? "真实流式回复" : "回退流式回复"} + 意图判断
+                当前模式：{streamMode === "streaming" ? "真实流式回复" : "回退流式回复"} +
+                意图判断
               </p>
               <button
                 type="button"
@@ -295,7 +390,9 @@ export function ChatPage() {
             <p className="text-sm text-slate-500">Skill Decisions</p>
             <div className="mt-4 space-y-3">
               {skillDecisions.length === 0 ? (
-                <p className="text-sm leading-7 text-slate-600">当前还没有技能选择结果。</p>
+                <p className="text-sm leading-7 text-slate-600">
+                  当前还没有技能选择结果。
+                </p>
               ) : (
                 skillDecisions.map((item) => (
                   <div
@@ -325,7 +422,9 @@ export function ChatPage() {
             <p className="text-sm text-slate-400">Context Hints</p>
             <div className="mt-4 space-y-3">
               {contextHints.length === 0 ? (
-                <p className="text-sm leading-7 text-slate-300">当前还没有补充上下文。</p>
+                <p className="text-sm leading-7 text-slate-300">
+                  当前还没有补充上下文。
+                </p>
               ) : (
                 contextHints.map((hint) => (
                   <div
